@@ -62,17 +62,15 @@ Every condition must have a corresponding mutex.
 ```C
 void wait_for_condition(int (*cond)(), sem_t* m, int* wait_cnt) {
     // This function expects the fifo to be locked
-    // Loop until the condition is met
-    while (!cond()) {
-        (*wait_cnt)++; // Add this thread to the waiting queue
+    if (!cond()) {
+        (*wait_cnt)++;     // Increment the counter
         sem_post(&m_fifo); // Release the lock on the fifo
-        sem_wait(m); // Wait for the condition to be met
-        //
-        // Between theese two locks the condition may have changed
-        // That's why we need to check it again in a loop
-        //
-        sem_wait(&m_fifo); // Lock the fifo
-        (*wait_cnt)--; // Remove this thread from the waiting queue
+        sem_wait(m);       // Wait for the condition to be met
+        (*wait_cnt)--;     // Decrement the counter
+        // The thread that sends signal on the "m" mutex
+        // is expected to acquire the fifo mutex
+        // so at this point the mutex is locked
+        // and there is no need to lock it again
     }
 };
 ```
@@ -81,15 +79,19 @@ This routine is called after every change to the fifo.
 It checks if any of the waiting threads can be woken up and wakes them up.  
 ```C
 void update_semaphores() {
-    // This function expects the fifo to be locked
-    // Wake up waiting threads if possible
-    if (wait_cnt_prod_even > 0 && can_prod_even())
-        sem_post(&m_prod_even); // Wake up a waiting even producer
-    if (wait_cnt_prod_odd > 0 && can_prod_odd())
-        sem_post(&m_prod_odd); // Wake up a waiting odd producer
-    if (wait_cnt_cons_even > 0 && can_cons_even())
-        sem_post(&m_cons_even); // Wake up a waiting even consumer
-    if (wait_cnt_cons_odd > 0 && can_cons_odd())
-        sem_post(&m_cons_odd); // Wake up a waiting odd consumer
+    // If there is a thread to wake up then wake it up
+    // it is now that thread's responsibility to unlock the mutex
+    // If there is no thread to wake up then release the mutex
+    if (wait_cnt_prod_even > 0 && can_prod_even()) {
+        sem_post(&m_prod_even);
+    } else if (wait_cnt_prod_odd > 0 && can_prod_odd()) {
+        sem_post(&m_prod_odd);
+    } else if (wait_cnt_cons_even > 0 && can_cons_even()) {
+        sem_post(&m_cons_even);
+    } else if (wait_cnt_cons_odd > 0 && can_cons_odd()) {
+        sem_post(&m_cons_odd);
+    } else {
+        sem_post(&m_fifo);
+    }
 };
 ```

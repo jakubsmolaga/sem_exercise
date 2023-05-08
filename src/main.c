@@ -49,23 +49,25 @@ int can_cons_odd() {
 
 // Updates the semaphores based on the current state of the program
 void update_semaphores() {
-    if (wait_cnt_prod_even > 0 && can_prod_even())
+    if (wait_cnt_prod_even > 0 && can_prod_even()) {
         sem_post(&m_prod_even);
-    if (wait_cnt_prod_odd > 0 && can_prod_odd())
+    } else if (wait_cnt_prod_odd > 0 && can_prod_odd()) {
         sem_post(&m_prod_odd);
-    if (wait_cnt_cons_even > 0 && can_cons_even())
+    } else if (wait_cnt_cons_even > 0 && can_cons_even()) {
         sem_post(&m_cons_even);
-    if (wait_cnt_cons_odd > 0 && can_cons_odd())
+    } else if (wait_cnt_cons_odd > 0 && can_cons_odd()) {
         sem_post(&m_cons_odd);
+    } else {
+        sem_post(&m_fifo);
+    }
 };
 
 // Waits for a condition to be true, and updates the semaphores
 void wait_for_condition(int (*cond)(), sem_t* m, int* wait_cnt) {
-    while (!cond()) {
+    if (!cond()) {
         (*wait_cnt)++;
         sem_post(&m_fifo);
         sem_wait(m);
-        sem_wait(&m_fifo);
         (*wait_cnt)--;
     }
 };
@@ -78,7 +80,6 @@ void prod_even(int num) {
     wait_for_condition(can_prod_even, &m_prod_even, &wait_cnt_prod_even);
     fifo_push(&fifo, num);
     update_semaphores();
-    sem_post(&m_fifo);
 };
 
 // Pushes an odd number to the fifo
@@ -87,7 +88,6 @@ void prod_odd(int num) {
     wait_for_condition(can_prod_odd, &m_prod_odd, &wait_cnt_prod_odd);
     fifo_push(&fifo, num);
     update_semaphores();
-    sem_post(&m_fifo);
 };
 
 // Pops an even number from the fifo
@@ -96,7 +96,6 @@ int cons_even() {
     wait_for_condition(can_cons_even, &m_cons_even, &wait_cnt_cons_even);
     int num = fifo_pop(&fifo);
     update_semaphores();
-    sem_post(&m_fifo);
     return num;
 };
 
@@ -106,7 +105,6 @@ int cons_odd() {
     wait_for_condition(can_cons_odd, &m_cons_odd, &wait_cnt_cons_odd);
     int num = fifo_pop(&fifo);
     update_semaphores();
-    sem_post(&m_fifo);
     return num;
 };
 
@@ -166,6 +164,12 @@ void init(int fifo_size) {
     sem_init(&m_prod_odd, 0, 0);
     sem_init(&m_cons_even, 0, 0);
     sem_init(&m_cons_odd, 0, 0);
+
+    // Clear wait counts
+    wait_cnt_prod_even = 0;
+    wait_cnt_prod_odd = 0;
+    wait_cnt_cons_even = 0;
+    wait_cnt_cons_odd = 0;
 };
 
 // Destroys the semaphores and the FIFO
